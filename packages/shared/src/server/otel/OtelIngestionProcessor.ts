@@ -2057,6 +2057,57 @@ export class OtelIngestionProcessor {
       }
     }
 
+    // Claude Code (https://code.claude.com/docs/en/monitoring-usage)
+    // Content is opt-in per gate (OTEL_LOG_USER_PROMPTS, OTEL_LOG_TOOL_DETAILS,
+    // OTEL_LOG_TOOL_CONTENT); a disabled gate sends `<REDACTED>` or nothing.
+    // Tool output arrives on a `tool.output` span event.
+    if (instrumentationScopeName === CLAUDE_CODE_INSTRUMENTATION_SCOPE_NAME) {
+      const content = (value: unknown) =>
+        value == null || value === "" || value === "<REDACTED>"
+          ? undefined
+          : value;
+      const jsonContent = (value: unknown) =>
+        content(this.parseJsonPayload(value) ?? value);
+
+      const toolOutputAttributes: Record<string, unknown> =
+        events
+          .find(
+            (event: Record<string, unknown>) => event.name === "tool.output",
+          )
+          ?.attributes?.reduce((acc: Record<string, unknown>, attr: any) => {
+            acc[attr.key] = this.convertValueToPlainJavascript(attr.value);
+            return acc;
+          }, {}) ?? {};
+
+      const claudeCodeInput =
+        content(attributes["user_prompt"]) ??
+        jsonContent(attributes["tool_input"]) ??
+        content(attributes["full_command"]) ??
+        content(attributes["file_path"]) ??
+        jsonContent(attributes["new_context"]);
+      const claudeCodeOutput =
+        content(toolOutputAttributes["output"]) ??
+        content(toolOutputAttributes["content"]) ??
+        content(toolOutputAttributes["diff"]) ??
+        content(attributes["response.model_output"]);
+
+      if (claudeCodeInput !== undefined || claudeCodeOutput !== undefined) {
+        for (const key of [
+          "user_prompt",
+          "tool_input",
+          "new_context",
+          "response.model_output",
+        ]) {
+          delete filteredAttributes[key];
+        }
+        return {
+          input: claudeCodeInput ?? null,
+          output: claudeCodeOutput ?? null,
+          filteredAttributes,
+        };
+      }
+    }
+
     // OpenTelemetry GenAI semconv v1.37+ records prompts and completions on a
     // gen_ai.client.inference.operation.details span event instead of span
     // attributes (https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-events/)
