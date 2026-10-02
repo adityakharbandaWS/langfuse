@@ -3357,9 +3357,12 @@ export class OtelIngestionProcessor {
     ) {
       const ttftMs = Number(attributes["ttft_ms"]);
       if (Number.isFinite(ttftMs)) {
-        return new Date(
+        const completionStartTime = new Date(
           new Date(startTimeISO).getTime() + Math.ceil(ttftMs),
-        ).toISOString();
+        );
+        if (!Number.isNaN(completionStartTime.getTime())) {
+          return completionStartTime.toISOString();
+        }
       }
     }
 
