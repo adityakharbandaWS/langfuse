@@ -2,6 +2,9 @@
 # checkout, and web is the stock image of the same release.
 # Start it with `scripts/claude-code/up.sh`, which sets LANGFUSE_VERSION from
 # package.json. See CLAUDE_CODE_SETUP.md.
+#
+# TELEMETRY_ENABLED defaults to false here (upstream default: true), so no
+# usage statistics leave the machine. Set TELEMETRY_ENABLED=true in .env to opt in.
 services:
   langfuse-worker:
     image: langfuse-worker:${LANGFUSE_VERSION:?start with scripts/claude-code/up.sh}-claude-code
@@ -9,6 +12,10 @@ services:
       context: .
       dockerfile: worker/Dockerfile
     pull_policy: build
+    environment:
+      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-false}
 
   langfuse-web:
     image: docker.langfuse.com/langfuse/langfuse:${LANGFUSE_VERSION:?start with scripts/claude-code/up.sh}
+    environment:
+      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-false}
