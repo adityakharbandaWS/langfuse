@@ -17,8 +17,18 @@ The first start builds the worker and takes about 10 minutes. Then open http://l
 
 ## Send Claude Code traces to it
 
-1. Open http://localhost:3000 and sign up. The account only exists in your local Langfuse. Create an organization and a project, then go to **Settings → API Keys → Create new API key**. Build the auth value from the key:
-   `echo -n "pk-lf-...:sk-lf-..." | base64`
+1. **Get an API key and turn it into an auth value.**
+   1. Open http://localhost:3000 and sign up. The account only exists in your local Langfuse. Create an organization and a project.
+   2. In the project, go to **Settings → API Keys → Create new API keys**. You get two keys: a **public key** (starts with `pk-lf-`) and a **secret key** (starts with `sk-lf-`). Copy both now, because the secret key is only shown once.
+   3. Open a terminal and run the line below, replacing the two placeholders with your keys. Keep the quotes, and put a colon between the keys with no spaces:
+
+      ```bash
+      echo -n "pk-lf-YOUR-PUBLIC-KEY:sk-lf-YOUR-SECRET-KEY" | base64 | tr -d '\n'; echo
+      ```
+
+   4. It prints one long line of letters and numbers, often ending in `=`. That's your auth value; copy all of it. For example, the made-up keys `pk-lf-1234abcd` and `sk-lf-5678efgh` give `cGstbGYtMTIzNGFiY2Q6c2stbGYtNTY3OGVmZ2g=`. Yours will be longer.
+
+   This encodes both keys into one value (base64) that Langfuse accepts as a login for incoming traces. It isn't encryption, so treat the result as secret, just like the secret key.
 2. Add this to the `env` block of `~/.claude/settings.json`, then restart Claude Code:
 
    ```json
@@ -27,11 +37,13 @@ The first start builds the worker and takes about 10 minutes. Then open http://l
    "OTEL_TRACES_EXPORTER": "otlp",
    "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "http/protobuf",
    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://localhost:3000/api/public/otel/v1/traces",
-   "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Basic <base64 value from step 1>",
+   "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Basic YOUR-AUTH-VALUE",
    "OTEL_LOG_USER_PROMPTS": "1",
    "OTEL_LOG_TOOL_DETAILS": "1",
    "OTEL_LOG_TOOL_CONTENT": "1"
    ```
+
+   Replace `YOUR-AUTH-VALUE` with the auth value from step 1, and keep the space after `Basic`.
 
    The last three record your prompts and tool inputs and outputs, so traces show what happened, not just timings and cost. They're only sent to your local Langfuse.
 
