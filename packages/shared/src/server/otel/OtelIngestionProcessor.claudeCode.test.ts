@@ -133,5 +133,15 @@ describe.each(["v3", "v4"] as const)(
         new Date(1790936476112 + 1341).toISOString(),
       );
     });
+
+    it("leaves the completion start time unset for an out-of-range ttft_ms", async () => {
+      const observation = await processLlmRequest(
+        path,
+        buildLlmRequestBatch({ ttft_ms: intValue(1e16) }),
+      );
+
+      expect(observation).toBeDefined();
+      expect(observation?.completionStartTime).toBeNull();
+    });
   },
 );
