@@ -5,6 +5,9 @@
 #
 # TELEMETRY_ENABLED defaults to false here (upstream default: true), so no
 # usage statistics leave the machine. Set TELEMETRY_ENABLED=true in .env to opt in.
+#
+# Web and MinIO only listen on 127.0.0.1 (upstream: all interfaces), so other
+# machines on your network can't read your traces or their stored payloads.
 services:
   langfuse-worker:
     image: langfuse-worker:${LANGFUSE_VERSION:?start with scripts/claude-code/up.sh}-claude-code
@@ -19,3 +22,10 @@ services:
     image: docker.langfuse.com/langfuse/langfuse:${LANGFUSE_VERSION:?start with scripts/claude-code/up.sh}
     environment:
       TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-false}
+    ports: !override
+      - 127.0.0.1:3000:3000
+
+  minio:
+    ports: !override
+      - 127.0.0.1:9090:9000
+      - 127.0.0.1:9091:9001
