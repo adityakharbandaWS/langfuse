@@ -27,10 +27,13 @@ The first start builds the worker and takes about 10 minutes. Then open http://l
    "OTEL_TRACES_EXPORTER": "otlp",
    "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "http/protobuf",
    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://localhost:3000/api/public/otel/v1/traces",
-   "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Basic <base64 value from step 1>"
+   "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Basic <base64 value from step 1>",
+   "OTEL_LOG_USER_PROMPTS": "1",
+   "OTEL_LOG_TOOL_DETAILS": "1",
+   "OTEL_LOG_TOOL_CONTENT": "1"
    ```
 
-   Optional: `OTEL_LOG_USER_PROMPTS`, `OTEL_LOG_TOOL_DETAILS` and `OTEL_LOG_TOOL_CONTENT` set to `"1"` also record prompt and tool contents in your local Langfuse.
+   The last three record your prompts and tool inputs and outputs, so traces show what happened, not just timings and cost. They're only sent to your local Langfuse.
 
 This is a user-level setting, so it covers Claude Code everywhere on your machine: `claude` in any terminal or folder, the Claude desktop app's Code tab, IDE extensions and editors such as Zed. Regular chats in the Claude app aren't Claude Code, so they aren't traced. Langfuse has to be running when you use Claude Code. The containers restart on their own whenever Docker is running.
 
