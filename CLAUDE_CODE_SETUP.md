@@ -1,6 +1,6 @@
 # Local Langfuse with Claude Code cost
 
-This branch is Langfuse plus a small patch. The patch reads Claude Code's OpenTelemetry token counts, so Claude Code traces show usage, cost and time to first token. A daily bot keeps the branch on the latest Langfuse release.
+This branch is Langfuse plus a small patch. The patch reads Claude Code's OpenTelemetry data, so Claude Code traces show usage, cost and time to first token, and the Input and Output columns show your prompts, tool commands and tool output. A daily bot keeps the branch on the latest Langfuse release.
 
 ## Start it
 
@@ -49,7 +49,7 @@ The first start builds the worker and takes about 10 minutes. Then open http://l
 
 This is a user-level setting, so it covers Claude Code everywhere on your machine: `claude` in any terminal or folder, the Claude desktop app's Code tab, IDE extensions and editors such as Zed. Regular chats in the Claude app aren't Claude Code, so they aren't traced. Langfuse has to be running when you use Claude Code. The containers restart on their own whenever Docker is running.
 
-Only traces that arrive after the patched worker is running get a cost.
+Only traces that arrive after the patched worker is running get a cost and input/output. Model-call rows (`claude_code.llm_request`) keep an empty Input and Output, because Claude Code sends no prompt or response text on them.
 
 ## Update to a newer release
 
