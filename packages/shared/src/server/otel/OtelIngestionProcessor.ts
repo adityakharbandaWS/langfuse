@@ -49,6 +49,8 @@ import { safeJsonParse } from "../../utils/json";
 import { defineOwnValue } from "../../utils/objects";
 
 export const AI_GATEWAY_INSTRUMENTATION_SCOPE_NAME = "langfuse-ai-gateway";
+const CLAUDE_CODE_INSTRUMENTATION_SCOPE_NAME =
+  "com.anthropic.claude_code.tracing";
 
 // Foreign level vocabularies observed from OTel senders (OTel severity
 // names, python logging, loguru, console) mapped onto the Langfuse enum.
@@ -647,6 +649,7 @@ export class OtelIngestionProcessor {
                     : this.extractModelName(spanAttributes),
                   completionStartTime: this.extractCompletionStartTime(
                     spanAttributes,
+                    scopeSpan?.scope?.name ?? "",
                     startTimeISO,
                   ),
 
@@ -1313,6 +1316,7 @@ export class OtelIngestionProcessor {
       environment: this.extractEnvironment(attributes, resourceAttributes),
       completionStartTime: this.extractCompletionStartTime(
         attributes,
+        instrumentationScopeName,
         startTimeISO,
       ),
       metadata: normalizedToolMetadata.metadata,
@@ -2886,6 +2890,14 @@ export class OtelIngestionProcessor {
 
     if (explicitModelParameters) return explicitModelParameters;
 
+    // Claude Code: `speed` selects the model's fast-mode pricing tier
+    if (
+      instrumentationScopeName === CLAUDE_CODE_INSTRUMENTATION_SCOPE_NAME &&
+      typeof attributes["speed"] === "string"
+    ) {
+      return { speed: attributes["speed"] };
+    }
+
     if (attributes["llm.invocation_parameters"]) {
       try {
         return this.sanitizeModelParams(
@@ -3225,6 +3237,24 @@ export class OtelIngestionProcessor {
       if (Object.keys(usageDetails).length > 0) return usageDetails;
     }
 
+    // Claude Code: input_tokens follows the Anthropic API and already excludes
+    // cache reads and cache writes, so no cache subtraction applies.
+    if (instrumentationScopeName === CLAUDE_CODE_INSTRUMENTATION_SCOPE_NAME) {
+      const usageDetails: Record<string, number> = {};
+      for (const [attributeKey, usageKey] of [
+        ["input_tokens", "input"],
+        ["output_tokens", "output"],
+        ["cache_read_tokens", "input_cached_tokens"],
+        ["cache_creation_tokens", "input_cache_creation"],
+      ] as const) {
+        const value = Number(attributes[attributeKey]);
+        if (attributes[attributeKey] != null && Number.isFinite(value)) {
+          usageDetails[usageKey] = value;
+        }
+      }
+      if (Object.keys(usageDetails).length > 0) return usageDetails;
+    }
+
     if (
       instrumentationScopeName === "gcp.vertex.agent" &&
       "gcp.vertex.agent.llm_response" in attributes
@@ -3430,6 +3460,7 @@ export class OtelIngestionProcessor {
 
   private extractCompletionStartTime(
     attributes: Record<string, unknown>,
+    instrumentationScopeName: string,
     startTimeISO?: string,
   ): string | null {
     try {
@@ -3461,6 +3492,20 @@ export class OtelIngestionProcessor {
       }
     } catch {
       // Fallthrough
+    }
+
+    // Claude Code
+    if (
+      instrumentationScopeName === CLAUDE_CODE_INSTRUMENTATION_SCOPE_NAME &&
+      attributes["ttft_ms"] != null &&
+      startTimeISO
+    ) {
+      const ttftMs = Number(attributes["ttft_ms"]);
+      if (Number.isFinite(ttftMs)) {
+        return new Date(
+          new Date(startTimeISO).getTime() + Math.ceil(ttftMs),
+        ).toISOString();
+      }
     }
 
     return null;
