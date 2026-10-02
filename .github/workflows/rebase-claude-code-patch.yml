@@ -1,0 +1,165 @@
+# Keeps the Claude Code usage/cost patch on top of the latest Langfuse release.
+#
+# Daily: find the latest langfuse/langfuse release, rebase
+# `feat/otel-claude-code-usage` onto it, run the patch's tests, then push the
+# branch plus a per-release snapshot branch `claude-code/<tag>`.
+# A conflict or test failure fails the run, and GitHub emails you.
+# Optional: with repo variable BUILD_WORKER_IMAGE=true, also builds the arm64
+# worker image and pushes it to ghcr.io/<owner>/langfuse-worker:<version>-claude-code.
+#
+# Needs repo secret PATCH_BOT_TOKEN: a fine-grained PAT for this repo only,
+# with Contents: read/write and Workflows: read/write. (Rebased history carries
+# upstream workflow-file changes, which the default GITHUB_TOKEN may not push.)
+name: Rebase Claude Code patch
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Upstream release tag to rebase onto (default: latest release)"
+        required: false
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: rebase-claude-code-patch
+  cancel-in-progress: false
+
+env:
+  UPSTREAM: langfuse/langfuse
+  PATCH_BRANCH: feat/otel-claude-code-usage
+  NODE_VERSION: 24
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      updated: ${{ steps.rebase.outputs.updated }}
+    steps:
+      - name: Check push token
+        env:
+          PATCH_BOT_TOKEN: ${{ secrets.PATCH_BOT_TOKEN }}
+        run: |
+          if [ -z "$PATCH_BOT_TOKEN" ]; then
+            echo "::error::Repo secret PATCH_BOT_TOKEN is not set. See the header of this workflow file."
+            exit 1
+          fi
+
+      - name: Resolve target release
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="${INPUT_TAG:-$(gh release view --repo "$UPSTREAM" --json tagName --jq .tagName)}"
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Unexpected release tag '$tag'"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.PATCH_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Rebase patch onto release
+        id: rebase
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --no-tags "https://github.com/$UPSTREAM.git" \
+            "+refs/heads/main:refs/remotes/upstream/main" \
+            "+refs/tags/$TAG:refs/tags/$TAG"
+
+          echo "old_head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if git merge-base --is-ancestor "$TAG" HEAD; then
+            echo "\`$PATCH_BRANCH\` is already based on $TAG." >> "$GITHUB_STEP_SUMMARY"
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # The patch is every commit on the branch that upstream main lacks.
+          base="$(git merge-base HEAD upstream/main)"
+          echo "Patch commits:" >> "$GITHUB_STEP_SUMMARY"
+          git log --format='- %h %s' "$base..HEAD" >> "$GITHUB_STEP_SUMMARY"
+
+          if ! git rebase --onto "$TAG" "$base"; then
+            {
+              echo
+              echo "### Rebase onto $TAG hit conflicts"
+              git diff --name-only --diff-filter=U | sed 's/^/- /'
+              echo
+              echo "Resolve locally: \`git fetch origin --tags && git rebase --onto $TAG $base\`,"
+              echo "then push \`$PATCH_BRANCH\` to this fork."
+            } >> "$GITHUB_STEP_SUMMARY"
+            git rebase --abort
+            exit 1
+          fi
+          echo "updated=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.rebase.outputs.updated == 'true'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Test patch
+        if: steps.rebase.outputs.updated == 'true'
+        run: |
+          corepack enable
+          cp .env.dev.example .env
+          pnpm install --frozen-lockfile
+          pnpm --filter=shared run db:generate
+          pnpm --filter @langfuse/shared run test OtelIngestionProcessor.claudeCode
+
+      - name: Push rebased branches
+        if: steps.rebase.outputs.updated == 'true'
+        env:
+          PATCH_BOT_TOKEN: ${{ secrets.PATCH_BOT_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          OLD_HEAD: ${{ steps.rebase.outputs.old_head }}
+        run: |
+          remote="https://x-access-token:${PATCH_BOT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force-with-lease="refs/heads/$PATCH_BRANCH:$OLD_HEAD" "$remote" \
+            "HEAD:refs/heads/$PATCH_BRANCH" \
+            "HEAD:refs/heads/claude-code/$TAG"
+          echo "Rebased onto $TAG and pushed \`$PATCH_BRANCH\` and \`claude-code/$TAG\`." >> "$GITHUB_STEP_SUMMARY"
+
+  worker-image:
+    needs: rebase
+    if: >-
+      vars.BUILD_WORKER_IMAGE == 'true' &&
+      (needs.rebase.outputs.updated == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.PATCH_BRANCH }}
+          persist-credentials: false
+
+      - name: Build and push worker image
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.rebase.outputs.tag }}
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          image="ghcr.io/${owner}/langfuse-worker:${TAG#v}-claude-code"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker build --platform linux/arm64 --build-arg TARGETPLATFORM=linux/arm64 \
+            -f worker/Dockerfile -t "$image" .
+          docker push "$image"
+          echo "Pushed \`$image\`" >> "$GITHUB_STEP_SUMMARY"
