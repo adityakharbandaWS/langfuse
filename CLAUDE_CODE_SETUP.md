@@ -46,6 +46,7 @@ The bot rewrites this branch when it moves to a new release, so update with `res
 
 ## Notes
 
+- **No usage statistics leave your machine.** Langfuse normally reports anonymous usage statistics to Langfuse's PostHog analytics. This setup turns that off: `TELEMETRY_ENABLED=false` is the default in `docker-compose.claude-code.yml`, so there's nothing to configure. To opt in, put `TELEMETRY_ENABLED=true` in a `.env` file in this folder. Your traces only go to your local Langfuse either way.
 - **Always start it with the script.** It keeps web and worker on the same release. A plain `docker compose up` falls back to the stock worker, which shows no cost.
 - **Existing setup:** if you already run Langfuse with this repo's `docker-compose.yml`, the script reuses the same containers and data, because the Compose project is named `langfuse`.
 - **Stop:** `docker compose -p langfuse down`. Your data is kept.
