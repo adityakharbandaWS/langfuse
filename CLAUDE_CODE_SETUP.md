@@ -17,7 +17,7 @@ The first start builds the worker and takes about 10 minutes. Then open http://l
 
 ## Send Claude Code traces to it
 
-1. In Langfuse, create a project and an API key. Then build the auth value:
+1. Open http://localhost:3000 and sign up. The account only exists in your local Langfuse. Create an organization and a project, then go to **Settings → API Keys → Create new API key**. Build the auth value from the key:
    `echo -n "pk-lf-...:sk-lf-..." | base64`
 2. Add this to the `env` block of `~/.claude/settings.json`, then restart Claude Code:
 
@@ -31,6 +31,8 @@ The first start builds the worker and takes about 10 minutes. Then open http://l
    ```
 
    Optional: `OTEL_LOG_USER_PROMPTS`, `OTEL_LOG_TOOL_DETAILS` and `OTEL_LOG_TOOL_CONTENT` set to `"1"` also record prompt and tool contents in your local Langfuse.
+
+This is a user-level setting, so it covers Claude Code everywhere on your machine: `claude` in any terminal or folder, the Claude desktop app's Code tab, IDE extensions and editors such as Zed. Regular chats in the Claude app aren't Claude Code, so they aren't traced. Langfuse has to be running when you use Claude Code. The containers restart on their own whenever Docker is running.
 
 Only traces that arrive after the patched worker is running get a cost.
 
