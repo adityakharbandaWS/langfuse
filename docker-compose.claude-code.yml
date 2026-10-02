@@ -1,0 +1,14 @@
+# Langfuse with the Claude Code usage/cost patch: the worker is built from this
+# checkout, and web is the stock image of the same release.
+# Start it with `scripts/claude-code/up.sh`, which sets LANGFUSE_VERSION from
+# package.json. See CLAUDE_CODE_SETUP.md.
+services:
+  langfuse-worker:
+    image: langfuse-worker:${LANGFUSE_VERSION:?start with scripts/claude-code/up.sh}-claude-code
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    pull_policy: build
+
+  langfuse-web:
+    image: docker.langfuse.com/langfuse/langfuse:${LANGFUSE_VERSION:?start with scripts/claude-code/up.sh}
